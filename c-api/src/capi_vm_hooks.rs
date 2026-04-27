@@ -551,6 +551,10 @@ impl multiversx_chain_vm_executor::VMHooksLegacy for CapiVMHooks {
         (self.c_func_pointers_ptr.managed_is_builtin_function_func_ptr)(self.vm_hooks_ptr, function_name_handle)
     }
 
+    fn managed_drwasync_mirror(&self, payload_handle: i32) -> i32 {
+        (self.c_func_pointers_ptr.managed_drwasync_mirror_func_ptr)(self.vm_hooks_ptr, payload_handle)
+    }
+
     fn big_float_new_from_parts(&self, integral_part: i32, fractional_part: i32, exponent: i32) -> i32 {
         (self.c_func_pointers_ptr.big_float_new_from_parts_func_ptr)(self.vm_hooks_ptr, integral_part, fractional_part, exponent)
     }

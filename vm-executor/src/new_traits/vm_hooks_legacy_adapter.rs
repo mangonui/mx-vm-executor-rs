@@ -559,6 +559,10 @@ impl<VH: VMHooksSetEarlyExit> VMHooksLegacy for VMHooksLegacyAdapter<VH> {
         self.adapt_vm_hooks(|inner| VMHooks::managed_is_builtin_function(inner, function_name_handle))
     }
 
+    fn managed_drwasync_mirror(&self, payload_handle: i32) -> i32 {
+        self.adapt_vm_hooks(|inner| VMHooks::managed_drwasync_mirror(inner, payload_handle))
+    }
+
     fn big_float_new_from_parts(&self, integral_part: i32, fractional_part: i32, exponent: i32) -> i32 {
         self.adapt_vm_hooks(|inner| VMHooks::big_float_new_from_parts(inner, integral_part, fractional_part, exponent))
     }

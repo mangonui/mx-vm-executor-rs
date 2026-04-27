@@ -137,6 +137,7 @@ pub trait VMHooks: core::fmt::Debug {
     fn managed_get_code_metadata(&mut self, address_handle: i32, response_handle: i32) -> Result<(), VMHooksEarlyExit>;
     fn managed_get_code_hash(&mut self, address_handle: i32, code_hash_handle: i32) -> Result<(), VMHooksEarlyExit>;
     fn managed_is_builtin_function(&mut self, function_name_handle: i32) -> Result<i32, VMHooksEarlyExit>;
+    fn managed_drwasync_mirror(&mut self, payload_handle: i32) -> Result<i32, VMHooksEarlyExit>;
     fn big_float_new_from_parts(&mut self, integral_part: i32, fractional_part: i32, exponent: i32) -> Result<i32, VMHooksEarlyExit>;
     fn big_float_new_from_frac(&mut self, numerator: i64, denominator: i64) -> Result<i32, VMHooksEarlyExit>;
     fn big_float_new_from_sci(&mut self, significand: i64, exponent: i64) -> Result<i32, VMHooksEarlyExit>;
@@ -932,6 +933,11 @@ impl VMHooks for VMHooksDefault {
 
     fn managed_is_builtin_function(&mut self, function_name_handle: i32) -> Result<i32, VMHooksEarlyExit> {
         println!("Called: managed_is_builtin_function");
+        Ok(0)
+    }
+
+    fn managed_drwasync_mirror(&mut self, payload_handle: i32) -> Result<i32, VMHooksEarlyExit> {
+        println!("Called: managed_drwasync_mirror");
         Ok(0)
     }
 

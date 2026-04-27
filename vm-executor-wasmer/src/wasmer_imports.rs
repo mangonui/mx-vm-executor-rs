@@ -651,6 +651,11 @@ fn wasmer_import_managed_is_builtin_function(env: &VMHooksWrapper, function_name
 }
 
 #[rustfmt::skip]
+fn wasmer_import_managed_drwasync_mirror(env: &VMHooksWrapper, payload_handle: i32) -> i32 {
+    env.vm_hooks.managed_drwasync_mirror(payload_handle)
+}
+
+#[rustfmt::skip]
 fn wasmer_import_big_float_new_from_parts(env: &VMHooksWrapper, integral_part: i32, fractional_part: i32, exponent: i32) -> i32 {
     env.vm_hooks.big_float_new_from_parts(integral_part, fractional_part, exponent)
 }
@@ -1526,6 +1531,7 @@ pub fn generate_import_object(store: &Store, env: &VMHooksWrapper) -> ImportObje
             "managedGetCodeMetadata" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_get_code_metadata),
             "managedGetCodeHash" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_get_code_hash),
             "managedIsBuiltinFunction" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_is_builtin_function),
+            "managedDRWASyncMirror" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_drwasync_mirror),
             "bigFloatNewFromParts" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_parts),
             "bigFloatNewFromFrac" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_frac),
             "bigFloatNewFromSci" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_sci),
