@@ -7,9 +7,9 @@
 #![allow(clippy::too_many_arguments)]
 
 use multiversx_chain_vm_executor::VMHooksEarlyExit;
-use wasmer::{Function, FunctionEnv, FunctionEnvMut, Imports, Store, imports};
+use wasmer::{imports, Function, FunctionEnv, FunctionEnvMut, Imports, Store};
 
-use crate::we_vm_hooks::{VMHooksWrapper, convert_mem_length, convert_mem_ptr, with_vm_hooks};
+use crate::we_vm_hooks::{convert_mem_length, convert_mem_ptr, with_vm_hooks, VMHooksWrapper};
 
 #[rustfmt::skip]
 fn wasmer_import_get_gas_left(env: FunctionEnvMut<VMHooksWrapper>) -> Result<i64, VMHooksEarlyExit> {
@@ -652,8 +652,13 @@ fn wasmer_import_managed_is_builtin_function(env: FunctionEnvMut<VMHooksWrapper>
 }
 
 #[rustfmt::skip]
-fn wasmer_import_managed_drwasync_mirror(env: FunctionEnvMut<VMHooksWrapper>, payload_handle: i32) -> Result<i32, VMHooksEarlyExit> {
-    with_vm_hooks(env, |vh| vh.managed_drwasync_mirror(payload_handle))
+fn wasmer_import_managed_drwa_sync_mirror(env: FunctionEnvMut<VMHooksWrapper>, payload_handle: i32) -> Result<i32, VMHooksEarlyExit> {
+    with_vm_hooks(env, |vh| vh.managed_drwa_sync_mirror(payload_handle))
+}
+
+#[rustfmt::skip]
+fn wasmer_import_managed_drwa_native_governance_query(env: FunctionEnvMut<VMHooksWrapper>, query_type: i32, key_handle: i32, dest_handle: i32) -> Result<i32, VMHooksEarlyExit> {
+    with_vm_hooks(env, |vh| vh.managed_drwa_native_governance_query(query_type, key_handle, dest_handle))
 }
 
 #[rustfmt::skip]
@@ -1534,7 +1539,8 @@ pub fn generate_import_object(store: &mut Store, vh_wrapper: VMHooksWrapper) -> 
             "managedGetCodeMetadata" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_get_code_metadata),
             "managedGetCodeHash" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_get_code_hash),
             "managedIsBuiltinFunction" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_is_builtin_function),
-            "managedDRWASyncMirror" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_drwasync_mirror),
+            "managedDRWASyncMirror" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_drwa_sync_mirror),
+            "managedDRWANativeGovernanceQuery" => Function::new_typed_with_env(store, &function_env, wasmer_import_managed_drwa_native_governance_query),
             "bigFloatNewFromParts" => Function::new_typed_with_env(store, &function_env, wasmer_import_big_float_new_from_parts),
             "bigFloatNewFromFrac" => Function::new_typed_with_env(store, &function_env, wasmer_import_big_float_new_from_frac),
             "bigFloatNewFromSci" => Function::new_typed_with_env(store, &function_env, wasmer_import_big_float_new_from_sci),

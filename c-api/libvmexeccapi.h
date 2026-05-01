@@ -467,7 +467,11 @@ typedef struct vm_exec_vm_hook_c_func_pointers {
                                          int32_t address_handle,
                                          int32_t code_hash_handle);
   int32_t (*managed_is_builtin_function_func_ptr)(void *context, int32_t function_name_handle);
-  int32_t (*managed_drwasync_mirror_func_ptr)(void *context, int32_t payload_handle);
+  int32_t (*managed_drwa_sync_mirror_func_ptr)(void *context, int32_t payload_handle);
+  int32_t (*managed_drwa_native_governance_query_func_ptr)(void *context,
+                                                           int32_t query_type,
+                                                           int32_t key_handle,
+                                                           int32_t dest_handle);
   int32_t (*big_float_new_from_parts_func_ptr)(void *context,
                                                int32_t integral_part,
                                                int32_t fractional_part,

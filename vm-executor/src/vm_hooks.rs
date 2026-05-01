@@ -141,7 +141,8 @@ pub trait VMHooksLegacy: core::fmt::Debug {
     fn managed_get_code_metadata(&self, address_handle: i32, response_handle: i32);
     fn managed_get_code_hash(&self, address_handle: i32, code_hash_handle: i32);
     fn managed_is_builtin_function(&self, function_name_handle: i32) -> i32;
-    fn managed_drwasync_mirror(&self, payload_handle: i32) -> i32;
+    fn managed_drwa_sync_mirror(&self, payload_handle: i32) -> i32;
+    fn managed_drwa_native_governance_query(&self, query_type: i32, key_handle: i32, dest_handle: i32) -> i32;
     fn big_float_new_from_parts(&self, integral_part: i32, fractional_part: i32, exponent: i32) -> i32;
     fn big_float_new_from_frac(&self, numerator: i64, denominator: i64) -> i32;
     fn big_float_new_from_sci(&self, significand: i64, exponent: i64) -> i32;
@@ -896,8 +897,13 @@ impl VMHooksLegacy for VMHooksLegacyDefault {
         0
     }
 
-    fn managed_drwasync_mirror(&self, payload_handle: i32) -> i32 {
-        println!("Called: managed_drwasync_mirror");
+    fn managed_drwa_sync_mirror(&self, payload_handle: i32) -> i32 {
+        println!("Called: managed_drwa_sync_mirror");
+        0
+    }
+
+    fn managed_drwa_native_governance_query(&self, query_type: i32, key_handle: i32, dest_handle: i32) -> i32 {
+        println!("Called: managed_drwa_native_governance_query");
         0
     }
 

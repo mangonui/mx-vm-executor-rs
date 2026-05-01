@@ -6,7 +6,7 @@
 
 #![allow(clippy::too_many_arguments)]
 
-use wasmer::{Function, ImportObject, Store, imports};
+use wasmer::{imports, Function, ImportObject, Store};
 
 use crate::wasmer_vm_hooks::VMHooksWrapper;
 
@@ -651,8 +651,13 @@ fn wasmer_import_managed_is_builtin_function(env: &VMHooksWrapper, function_name
 }
 
 #[rustfmt::skip]
-fn wasmer_import_managed_drwasync_mirror(env: &VMHooksWrapper, payload_handle: i32) -> i32 {
-    env.vm_hooks.managed_drwasync_mirror(payload_handle)
+fn wasmer_import_managed_drwa_sync_mirror(env: &VMHooksWrapper, payload_handle: i32) -> i32 {
+    env.vm_hooks.managed_drwa_sync_mirror(payload_handle)
+}
+
+#[rustfmt::skip]
+fn wasmer_import_managed_drwa_native_governance_query(env: &VMHooksWrapper, query_type: i32, key_handle: i32, dest_handle: i32) -> i32 {
+    env.vm_hooks.managed_drwa_native_governance_query(query_type, key_handle, dest_handle)
 }
 
 #[rustfmt::skip]
@@ -1531,7 +1536,8 @@ pub fn generate_import_object(store: &Store, env: &VMHooksWrapper) -> ImportObje
             "managedGetCodeMetadata" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_get_code_metadata),
             "managedGetCodeHash" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_get_code_hash),
             "managedIsBuiltinFunction" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_is_builtin_function),
-            "managedDRWASyncMirror" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_drwasync_mirror),
+            "managedDRWASyncMirror" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_drwa_sync_mirror),
+            "managedDRWANativeGovernanceQuery" => Function::new_native_with_env(store, env.clone(), wasmer_import_managed_drwa_native_governance_query),
             "bigFloatNewFromParts" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_parts),
             "bigFloatNewFromFrac" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_frac),
             "bigFloatNewFromSci" => Function::new_native_with_env(store, env.clone(), wasmer_import_big_float_new_from_sci),
