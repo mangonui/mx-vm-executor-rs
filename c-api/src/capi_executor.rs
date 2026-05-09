@@ -33,6 +33,7 @@ pub unsafe extern "C" fn vm_exec_new_executor(
 
     // unpacking the vm hooks object pointer
     let vm_hook_pointers_ptr = unsafe { *vm_hook_pointers_ptr_ptr };
+    return_if_ptr_null!(vm_hook_pointers_ptr, "VM hooks inner ptr is null");
     let vm_hook_pointers = unsafe { (*vm_hook_pointers_ptr).clone() };
 
     // create executor

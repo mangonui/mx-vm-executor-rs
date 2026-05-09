@@ -8,6 +8,7 @@ use crate::{
 use libc::{c_char, c_int};
 use meta::capi_safe_unwind;
 use multiversx_chain_vm_executor::{CompilationOptionsLegacy, InstanceLegacy};
+use std::convert::TryFrom;
 use std::{ffi::CStr, slice};
 
 /// Opaque pointer to a `wasmer_runtime::Instance` value in Rust.
@@ -108,7 +109,15 @@ pub unsafe extern "C" fn vm_exec_instance_call(
         return vm_exec_result_t::VM_EXEC_ERROR;
     }
     let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = func_name_c.to_str().unwrap();
+    let func_name_r = match func_name_c.to_str() {
+        Ok(name) => name,
+        Err(err) => {
+            with_service(|service| {
+                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
+            });
+            return vm_exec_result_t::VM_EXEC_ERROR;
+        }
+    };
 
     let result = capi_instance.content.call(func_name_r);
     match result {
@@ -163,7 +172,15 @@ pub unsafe extern "C" fn vm_exec_instance_has_function(
     // unpack the function name
     return_if_ptr_null!(func_name_ptr, "function name ptr is null", -1);
     let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = func_name_c.to_str().unwrap();
+    let func_name_r = match func_name_c.to_str() {
+        Ok(name) => name,
+        Err(err) => {
+            with_service(|service| {
+                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
+            });
+            return -1;
+        }
+    };
 
     c_int::from(capi_instance.content.has_function(func_name_r))
 }
@@ -185,7 +202,15 @@ pub unsafe extern "C" fn vm_exec_instance_has_imported_function(
     // unpack the function name
     return_if_ptr_null!(func_name_ptr, "function name ptr is null", -1);
     let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = func_name_c.to_str().unwrap();
+    let func_name_r = match func_name_c.to_str() {
+        Ok(name) => name,
+        Err(err) => {
+            with_service(|service| {
+                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
+            });
+            return -1;
+        }
+    };
 
     c_int::from(capi_instance.content.has_imported_function(func_name_r))
 }
@@ -208,7 +233,7 @@ pub unsafe extern "C" fn vm_exported_function_names_length(
         0
     } else {
         let len_sum: usize = func_names.iter().map(|func_name| func_name.len()).sum();
-        (len_sum + func_names.len()) as c_int
+        c_int::try_from(len_sum + func_names.len()).unwrap_or(0)
     }
 }
 
@@ -277,5 +302,130 @@ pub unsafe extern "C" fn vm_exec_instance_reset(
             with_service(|service| service.update_last_error_str(message));
             vm_exec_result_t::VM_EXEC_ERROR
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::service_singleton::with_service;
+    use multiversx_chain_vm_executor::{BreakpointValueLegacy, ExecutorError, MemLength, MemPtr};
+
+    struct MockInstance;
+
+    impl InstanceLegacy for MockInstance {
+        fn call(&self, _func_name: &str) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn check_signatures(&self) -> bool {
+            true
+        }
+
+        fn has_function(&self, _func_name: &str) -> bool {
+            panic!("invalid UTF-8 must be rejected before instance dispatch")
+        }
+
+        fn has_imported_function(&self, _func_name: &str) -> bool {
+            panic!("invalid UTF-8 must be rejected before instance dispatch")
+        }
+
+        fn get_exported_function_names(&self) -> Vec<String> {
+            Vec::new()
+        }
+
+        fn set_points_limit(&self, _limit: u64) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn set_points_used(&self, _points: u64) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn get_points_used(&self) -> Result<u64, String> {
+            Ok(0)
+        }
+
+        fn memory_length(&self) -> Result<u64, String> {
+            Ok(0)
+        }
+
+        fn memory_ptr(&self) -> Result<*mut u8, String> {
+            Ok(std::ptr::null_mut())
+        }
+
+        fn memory_load(
+            &self,
+            _mem_ptr: MemPtr,
+            _mem_length: MemLength,
+        ) -> Result<&[u8], ExecutorError> {
+            Ok(&[])
+        }
+
+        fn memory_store(&self, _mem_ptr: MemPtr, _data: &[u8]) -> Result<(), ExecutorError> {
+            Ok(())
+        }
+
+        fn memory_grow(&self, _by_num_pages: u32) -> Result<u32, ExecutorError> {
+            Ok(0)
+        }
+
+        fn set_breakpoint_value(&self, _value: BreakpointValueLegacy) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn get_breakpoint_value(&self) -> Result<BreakpointValueLegacy, String> {
+            Ok(BreakpointValueLegacy::None)
+        }
+
+        fn reset(&self) -> Result<(), String> {
+            Ok(())
+        }
+
+        fn cache(&self) -> Result<Vec<u8>, String> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn new_mock_instance_ptr() -> *mut vm_exec_instance_t {
+        Box::into_raw(Box::new(CapiInstance {
+            content: Box::new(MockInstance),
+        })) as *mut vm_exec_instance_t
+    }
+
+    fn assert_invalid_utf8_error() {
+        let last_error = with_service(|service| service.get_last_error_string());
+        assert!(last_error.starts_with("invalid function name utf-8:"));
+    }
+
+    #[test]
+    fn vm_exec_instance_has_function_rejects_invalid_utf8() {
+        let instance_ptr = new_mock_instance_ptr();
+        let invalid_name = [0xff_u8, 0x00];
+
+        let result = unsafe {
+            vm_exec_instance_has_function(instance_ptr, invalid_name.as_ptr() as *const c_char)
+        };
+
+        assert_eq!(result, -1);
+        assert_invalid_utf8_error();
+        unsafe { vm_exec_instance_destroy(instance_ptr) };
+    }
+
+    #[test]
+    fn vm_exec_instance_has_imported_function_rejects_invalid_utf8() {
+        let instance_ptr = new_mock_instance_ptr();
+        let invalid_name = [0xff_u8, 0x00];
+
+        let result = unsafe {
+            vm_exec_instance_has_imported_function(
+                instance_ptr,
+                invalid_name.as_ptr() as *const c_char,
+            )
+        };
+
+        assert_eq!(result, -1);
+        assert_invalid_utf8_error();
+        unsafe { vm_exec_instance_destroy(instance_ptr) };
     }
 }

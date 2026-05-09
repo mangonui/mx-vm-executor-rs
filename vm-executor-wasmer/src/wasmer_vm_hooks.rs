@@ -1,11 +1,11 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::executor_interface::{MemLength, MemPtr, VMHooksLegacy};
 use wasmer::WasmerEnv;
 
 #[derive(Clone, Debug)]
 pub struct VMHooksWrapper {
-    pub vm_hooks: Rc<dyn VMHooksLegacy>,
+    pub vm_hooks: Arc<dyn VMHooksLegacy>,
 }
 
 unsafe impl Send for VMHooksWrapper {}

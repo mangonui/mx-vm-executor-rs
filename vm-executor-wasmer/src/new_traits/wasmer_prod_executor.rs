@@ -43,7 +43,7 @@ impl WasmerProdExecutor {
             let vm_hooks = self.runtime_ref.vm_hooks(instance_state);
 
             WasmerInstance::try_new_instance(
-                Rc::from(vm_hooks),
+                Arc::from(vm_hooks),
                 self.runtime_ref.opcode_cost(),
                 wasm_bytes,
                 &compilation_options.to_legacy(),

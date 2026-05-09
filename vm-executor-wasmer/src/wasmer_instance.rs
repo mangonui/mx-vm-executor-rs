@@ -11,8 +11,7 @@ use crate::{
 use log::trace;
 
 use std::cell::RefCell;
-use std::sync::Mutex;
-use std::{rc::Rc, sync::Arc};
+use std::sync::{Arc, Mutex};
 use wasmer::{CompilerConfig, Extern, Module, Store};
 use wasmer::{ExternType, Universal};
 use wasmer::{Pages, Singlepass};
@@ -27,7 +26,7 @@ pub struct WasmerInstance {
 
 impl WasmerInstance {
     pub fn try_new_instance(
-        vm_hooks: Rc<dyn VMHooksLegacy>,
+        vm_hooks: Arc<dyn VMHooksLegacy>,
         opcode_cost: Arc<Mutex<OpcodeCost>>,
         wasm_bytes: &[u8],
         compilation_options: &CompilationOptionsLegacy,
@@ -73,7 +72,7 @@ impl WasmerInstance {
     }
 
     pub fn try_new_instance_from_cache(
-        vm_hooks: Rc<dyn VMHooksLegacy>,
+        vm_hooks: Arc<dyn VMHooksLegacy>,
         opcode_cost: Arc<Mutex<OpcodeCost>>,
         cache_bytes: &[u8],
         compilation_options: &CompilationOptionsLegacy,
