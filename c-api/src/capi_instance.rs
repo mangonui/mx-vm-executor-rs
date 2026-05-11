@@ -71,16 +71,31 @@ pub struct vm_exec_compilation_options_t;
 
 pub struct CapiInstance {
     pub(crate) content: Box<dyn InstanceLegacy>,
-    /// Set by `vm_exec_instance_destroy` to mark this CapiInstance as
-    /// freed. A subsequent destroy call observes the flag and exits
-    /// without re-running `Box::from_raw`, preventing the
-    /// double-free that would otherwise occur if the Go side races
-    /// an explicit `Destroy()` with a finalizer-driven cleanup.
+    /// Race-protection flag for `vm_exec_instance_destroy`.
     ///
-    /// AtomicBool::swap with `Ordering::AcqRel` is used so a second
-    /// destroy on a different thread is guaranteed to observe the
-    /// first destroy's write before the underlying allocation could
-    /// be reused.
+    /// **What this protects against:** two threads calling
+    /// `vm_exec_instance_destroy` concurrently on the same pointer
+    /// *before* `Box::from_raw` has run. `compare_exchange` with
+    /// `Ordering::AcqRel` ensures only one thread wins the race to
+    /// reclaim the Box; the loser observes `destroyed == true` and
+    /// returns without touching the allocation.
+    ///
+    /// **What this does NOT protect against** (audit re-validation
+    /// correctly downgraded this to "Mostly Fixed / Not Confirmed
+    /// Closed"): a *second* destroy call from a *single thread*
+    /// after the first destroy has completed. The first destroy
+    /// frees the allocation via `Box::from_raw`. The second destroy
+    /// then reads the flag through `&*(instance_ptr as *const ...)`
+    /// — but that read dereferences freed memory, which is
+    /// undefined behaviour regardless of what value happens to be
+    /// observed. The atomic flag *requires* the memory to still be
+    /// valid to be read.
+    ///
+    /// A complete close requires the handle-based API redesign
+    /// (audit Open Finding #3) where instance "pointers" become
+    /// `CapiInstanceId(u64)` indices into a generation-counter pool
+    /// validated by the runtime before each dereference. That is
+    /// tracked as separate future work.
     pub(crate) destroyed: AtomicBool,
 }
 
@@ -327,17 +342,27 @@ pub unsafe extern "C" fn vm_exec_instance_destroy(instance_ptr: *mut vm_exec_ins
     if instance_ptr.is_null() {
         return;
     }
-    // SAFETY: the pointer comes from a previous Box::into_raw and the
-    // CapiInstance contains a destroyed flag. We re-acquire the Box
-    // via raw_ref-style transmute so we can atomically check the flag
-    // BEFORE reclaiming the Box. If the flag is already true another
-    // thread (or a previous call) has reclaimed the allocation —
-    // running Box::from_raw a second time would double-free.
+    // SAFETY contract — race-protection, NOT stale-pointer-protection.
     //
-    // We must not Box::from_raw before the flag check; doing so on a
-    // reused allocation is itself undefined behaviour. The compromise
-    // is to read the flag through a non-owning reference and only
-    // reclaim the Box on the first transition from false to true.
+    // The Acquire load below works correctly only when the
+    // CapiInstance allocation is still live (i.e. the first destroy
+    // has either not happened yet or is racing this one). It does
+    // NOT protect a second destroy from a single thread after the
+    // first destroy has completed: by then the allocation has been
+    // reclaimed by Box::from_raw and the read on the next line is
+    // undefined behaviour regardless of what the freed memory still
+    // contains.
+    //
+    // Acceptable usage contract for the Go-side caller:
+    //   - Concurrent destroys from multiple goroutines on the same
+    //     pointer are safe; only one wins the cmpxchg and reclaims.
+    //   - A single thread must never call destroy twice on the same
+    //     pointer. The destroyed flag does not (and structurally
+    //     cannot) protect that case.
+    //
+    // The complete fix is the handle-based API redesign tracked as
+    // audit Open Finding #3. See the CapiInstance::destroyed field
+    // doc-comment for details.
     let inst_ref = unsafe { &*(instance_ptr as *const CapiInstance) };
     if inst_ref
         .destroyed
