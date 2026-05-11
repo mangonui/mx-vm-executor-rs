@@ -12,7 +12,10 @@ use std::{
 use super::{WasmerProdInstance, WasmerProdInstanceState};
 
 pub trait WasmerProdRuntimeRef: Send + Sync {
-    fn vm_hooks(&self, instance_state: WasmerProdInstanceState) -> Box<dyn VMHooksLegacy>;
+    fn vm_hooks(
+        &self,
+        instance_state: WasmerProdInstanceState,
+    ) -> Box<dyn VMHooksLegacy + Send + Sync>;
 
     fn opcode_cost(&self) -> Arc<Mutex<OpcodeCost>>;
 }

@@ -79,6 +79,7 @@ pub unsafe extern "C" fn vm_exec_instance_from_cache(
         Ok(instance_box) => {
             let capi_instance = CapiInstance {
                 content: instance_box,
+                destroyed: std::sync::atomic::AtomicBool::new(false),
             };
             unsafe {
                 *instance_ptr_ptr =

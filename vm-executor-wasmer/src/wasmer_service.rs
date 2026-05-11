@@ -31,7 +31,7 @@ impl ExecutorLastError for BasicExecutorService {
 impl ExecutorService for BasicExecutorService {
     fn new_executor(
         &self,
-        vm_hooks_builder: Box<dyn VMHooksLegacy>,
+        vm_hooks_builder: Box<dyn VMHooksLegacy + Send + Sync>,
     ) -> Result<Box<dyn ExecutorLegacy>, ExecutorError> {
         trace!("Initializing WasmerExecutor ...");
         Ok(Box::new(WasmerExecutor::new(vm_hooks_builder)))

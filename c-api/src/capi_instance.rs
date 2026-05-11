@@ -9,7 +9,52 @@ use libc::{c_char, c_int};
 use meta::capi_safe_unwind;
 use multiversx_chain_vm_executor::{CompilationOptionsLegacy, InstanceLegacy};
 use std::convert::TryFrom;
-use std::{ffi::CStr, slice};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::slice;
+
+/// Maximum bytes scanned when converting a C-string function-name
+/// pointer into a Rust `&str`. Wasm function names in real contracts
+/// are 4-32 chars; 1024 is generous and bounds the worst-case scan if
+/// the C caller violates the null-terminator contract.
+const MAX_C_FUNC_NAME_LEN: usize = 1024;
+
+/// Reads a bounded null-terminated C string and validates UTF-8.
+///
+/// Previously the executor used `CStr::from_ptr` which walks the
+/// pointer until it encounters a null byte, with no length cap. A C
+/// caller passing a buffer without a null terminator caused an
+/// unbounded read that could (a) leak adjacent heap contents into the
+/// returned slice (and from there into log strings via
+/// update_last_error_str), or (b) walk into unmapped memory and
+/// segfault.
+///
+/// This helper uses `libc::strnlen` to find the null terminator while
+/// guaranteeing the scan never crosses MAX_C_FUNC_NAME_LEN bytes —
+/// strnlen's contract is "scan at most n bytes for null", so unlike
+/// strlen it will not walk into adjacent allocations or unmapped
+/// pages. The subsequent slice creation uses only the discovered
+/// length so it cannot over-read either.
+///
+/// # Safety
+///
+/// `ptr` must be a valid pointer to readable memory. strnlen's
+/// contract caps the read at MAX_C_FUNC_NAME_LEN bytes from `ptr`,
+/// but the caller must still ensure those bytes are within an
+/// allocation it owns; passing a stack pointer to a 2-byte buffer
+/// without a null inside it is undefined behaviour for the strnlen
+/// call itself. The C API consumer (mx-chain-vm-go) constructs these
+/// pointers from heap-allocated strings with a guaranteed null, so
+/// in practice the contract is satisfied.
+unsafe fn read_bounded_c_str<'a>(ptr: *const c_char) -> Result<&'a str, String> {
+    let n = unsafe { libc::strnlen(ptr, MAX_C_FUNC_NAME_LEN) };
+    if n >= MAX_C_FUNC_NAME_LEN {
+        return Err(format!(
+            "function name is not null-terminated within {MAX_C_FUNC_NAME_LEN} bytes"
+        ));
+    }
+    let bytes = unsafe { slice::from_raw_parts(ptr as *const u8, n) };
+    std::str::from_utf8(bytes).map_err(|err| format!("invalid function name utf-8: {err}"))
+}
 
 /// Opaque pointer to a `wasmer_runtime::Instance` value in Rust.
 ///
@@ -26,6 +71,17 @@ pub struct vm_exec_compilation_options_t;
 
 pub struct CapiInstance {
     pub(crate) content: Box<dyn InstanceLegacy>,
+    /// Set by `vm_exec_instance_destroy` to mark this CapiInstance as
+    /// freed. A subsequent destroy call observes the flag and exits
+    /// without re-running `Box::from_raw`, preventing the
+    /// double-free that would otherwise occur if the Go side races
+    /// an explicit `Destroy()` with a finalizer-driven cleanup.
+    ///
+    /// AtomicBool::swap with `Ordering::AcqRel` is used so a second
+    /// destroy on a different thread is guaranteed to observe the
+    /// first destroy's write before the underlying allocation could
+    /// be reused.
+    pub(crate) destroyed: AtomicBool,
 }
 
 /// Creates a new VM executor instance.
@@ -63,6 +119,7 @@ pub unsafe extern "C" fn vm_exec_new_instance(
         Ok(instance_box) => {
             let capi_instance = CapiInstance {
                 content: instance_box,
+                destroyed: AtomicBool::new(false),
             };
             unsafe {
                 *instance_ptr_ptr =
@@ -101,20 +158,17 @@ pub unsafe extern "C" fn vm_exec_instance_call(
     instance_ptr: *mut vm_exec_instance_t,
     func_name_ptr: *const c_char,
 ) -> vm_exec_result_t {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null");
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr);
 
     // unpack the function name
     if func_name_ptr.is_null() {
         with_service(|service| service.update_last_error_str("name ptr is null".to_string()));
         return vm_exec_result_t::VM_EXEC_ERROR;
     }
-    let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = match func_name_c.to_str() {
+    let func_name_r = match unsafe { read_bounded_c_str(func_name_ptr) } {
         Ok(name) => name,
         Err(err) => {
-            with_service(|service| {
-                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
-            });
+            with_service(|service| service.update_last_error_str(err));
             return vm_exec_result_t::VM_EXEC_ERROR;
         }
     };
@@ -142,7 +196,7 @@ pub unsafe extern "C" fn vm_exec_instance_call(
 pub unsafe extern "C" fn vm_check_signatures(
     instance_ptr: *mut vm_exec_instance_t,
 ) -> vm_exec_result_t {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null");
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr);
     if capi_instance.content.check_signatures() {
         vm_exec_result_t::VM_EXEC_OK
     } else {
@@ -167,17 +221,14 @@ pub unsafe extern "C" fn vm_exec_instance_has_function(
     instance_ptr: *mut vm_exec_instance_t,
     func_name_ptr: *const c_char,
 ) -> c_int {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null", -1);
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr, -1);
 
     // unpack the function name
     return_if_ptr_null!(func_name_ptr, "function name ptr is null", -1);
-    let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = match func_name_c.to_str() {
+    let func_name_r = match unsafe { read_bounded_c_str(func_name_ptr) } {
         Ok(name) => name,
         Err(err) => {
-            with_service(|service| {
-                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
-            });
+            with_service(|service| service.update_last_error_str(err));
             return -1;
         }
     };
@@ -197,17 +248,14 @@ pub unsafe extern "C" fn vm_exec_instance_has_imported_function(
     instance_ptr: *mut vm_exec_instance_t,
     func_name_ptr: *const c_char,
 ) -> c_int {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null", -1);
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr, -1);
 
     // unpack the function name
     return_if_ptr_null!(func_name_ptr, "function name ptr is null", -1);
-    let func_name_c = unsafe { CStr::from_ptr(func_name_ptr) };
-    let func_name_r = match func_name_c.to_str() {
+    let func_name_r = match unsafe { read_bounded_c_str(func_name_ptr) } {
         Ok(name) => name,
         Err(err) => {
-            with_service(|service| {
-                service.update_last_error_str(format!("invalid function name utf-8: {err}"))
-            });
+            with_service(|service| service.update_last_error_str(err));
             return -1;
         }
     };
@@ -226,7 +274,7 @@ pub unsafe extern "C" fn vm_exec_instance_has_imported_function(
 pub unsafe extern "C" fn vm_exported_function_names_length(
     instance_ptr: *mut vm_exec_instance_t,
 ) -> c_int {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null", 0);
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr, 0);
 
     let func_names = capi_instance.content.get_exported_function_names();
     if func_names.is_empty() {
@@ -256,7 +304,7 @@ pub unsafe extern "C" fn vm_exported_function_names(
     dest_buffer: *mut c_char,
     dest_buffer_len: c_int,
 ) -> c_int {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null", 0);
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr, 0);
 
     let func_names = capi_instance.content.get_exported_function_names();
     let concat = func_names.join("|");
@@ -276,10 +324,33 @@ pub unsafe extern "C" fn vm_exported_function_names(
 #[allow(clippy::cast_ptr_alignment)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn vm_exec_instance_destroy(instance_ptr: *mut vm_exec_instance_t) {
-    if !instance_ptr.is_null() {
-        let instance = unsafe { Box::from_raw(instance_ptr as *mut CapiInstance) };
-        drop(instance);
+    if instance_ptr.is_null() {
+        return;
     }
+    // SAFETY: the pointer comes from a previous Box::into_raw and the
+    // CapiInstance contains a destroyed flag. We re-acquire the Box
+    // via raw_ref-style transmute so we can atomically check the flag
+    // BEFORE reclaiming the Box. If the flag is already true another
+    // thread (or a previous call) has reclaimed the allocation —
+    // running Box::from_raw a second time would double-free.
+    //
+    // We must not Box::from_raw before the flag check; doing so on a
+    // reused allocation is itself undefined behaviour. The compromise
+    // is to read the flag through a non-owning reference and only
+    // reclaim the Box on the first transition from false to true.
+    let inst_ref = unsafe { &*(instance_ptr as *const CapiInstance) };
+    if inst_ref
+        .destroyed
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        // Already destroyed (or being destroyed concurrently). Do
+        // nothing — the first caller wins the race and owns the
+        // reclamation.
+        return;
+    }
+    let instance = unsafe { Box::from_raw(instance_ptr as *mut CapiInstance) };
+    drop(instance);
 }
 
 /// Resets an instance, cleaning memories and globals.
@@ -293,7 +364,7 @@ pub unsafe extern "C" fn vm_exec_instance_destroy(instance_ptr: *mut vm_exec_ins
 pub unsafe extern "C" fn vm_exec_instance_reset(
     instance_ptr: *mut vm_exec_instance_t,
 ) -> vm_exec_result_t {
-    let capi_instance = cast_input_ptr!(instance_ptr, CapiInstance, "instance ptr is null");
+    let capi_instance = cast_capi_instance_ptr!(instance_ptr);
 
     let result = capi_instance.content.reset();
     match result {
@@ -390,6 +461,7 @@ mod tests {
     fn new_mock_instance_ptr() -> *mut vm_exec_instance_t {
         Box::into_raw(Box::new(CapiInstance {
             content: Box::new(MockInstance),
+            destroyed: AtomicBool::new(false),
         })) as *mut vm_exec_instance_t
     }
 

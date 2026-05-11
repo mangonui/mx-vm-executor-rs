@@ -12,6 +12,7 @@ pub mod capi_memory;
 pub mod capi_metering;
 pub mod capi_vm_hook_pointers;
 pub mod capi_vm_hooks;
+mod capi_vm_hooks_thread_safety;
 pub mod service_singleton;
 pub mod wasmer_logger;
 

@@ -17,12 +17,12 @@ pub fn force_sighandler_reinstall() {
 }
 
 pub struct WasmerExecutorData {
-    vm_hooks: Arc<dyn VMHooksLegacy>,
+    vm_hooks: Arc<dyn VMHooksLegacy + Send + Sync>,
     opcode_cost: Arc<Mutex<OpcodeCost>>,
 }
 
 impl WasmerExecutorData {
-    pub fn new(vm_hooks: Box<dyn VMHooksLegacy>) -> Self {
+    pub fn new(vm_hooks: Box<dyn VMHooksLegacy + Send + Sync>) -> Self {
         Self {
             vm_hooks: Arc::from(vm_hooks),
             opcode_cost: Arc::new(Mutex::new(OpcodeCost::default())),
@@ -51,7 +51,7 @@ pub struct WasmerExecutor {
 }
 
 impl WasmerExecutor {
-    pub fn new(vm_hooks: Box<dyn VMHooksLegacy>) -> Self {
+    pub fn new(vm_hooks: Box<dyn VMHooksLegacy + Send + Sync>) -> Self {
         Self {
             data: Arc::new(RefCell::new(WasmerExecutorData::new(vm_hooks))),
         }
