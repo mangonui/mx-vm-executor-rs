@@ -56,7 +56,7 @@ fn string_len_with_null(len: usize) -> Option<c_int> {
     c_int::try_from(len).ok()?.checked_add(1)
 }
 
-pub(crate) fn string_length(s: String) -> c_int {
+pub(crate) fn string_length_str(s: &str) -> c_int {
     if s.is_empty() {
         0
     } else {
@@ -67,6 +67,14 @@ pub(crate) fn string_length(s: String) -> c_int {
 /// Copies a String to destination pointer, over the C API.
 pub(crate) unsafe fn string_copy(
     s: String,
+    dest_buffer: *mut c_char,
+    dest_buffer_len: c_int,
+) -> c_int {
+    unsafe { string_copy_str(&s, dest_buffer, dest_buffer_len) }
+}
+
+pub(crate) unsafe fn string_copy_str(
+    s: &str,
     dest_buffer: *mut c_char,
     dest_buffer_len: c_int,
 ) -> c_int {

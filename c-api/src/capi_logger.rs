@@ -62,6 +62,9 @@ mod tests {
 
     #[test]
     fn capi_safe_unwind_records_panic_payload() {
+        let _guard = crate::service_singleton::test::LAST_ERROR_TEST_MUTEX
+            .lock()
+            .unwrap();
         let result = panic_for_test();
 
         assert!(matches!(result, crate::vm_exec_result_t::VM_EXEC_ERROR));

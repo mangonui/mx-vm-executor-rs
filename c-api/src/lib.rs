@@ -8,6 +8,7 @@ pub mod capi_executor;
 pub mod capi_instance;
 pub mod capi_instance_cache;
 pub mod capi_logger;
+mod capi_mem_conversion;
 pub mod capi_memory;
 pub mod capi_metering;
 pub mod capi_vm_hook_pointers;

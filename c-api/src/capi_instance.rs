@@ -684,6 +684,9 @@ mod tests {
 
     #[test]
     fn vm_exec_instance_has_function_rejects_invalid_utf8() {
+        let _guard = crate::service_singleton::test::LAST_ERROR_TEST_MUTEX
+            .lock()
+            .unwrap();
         let instance_ptr = new_mock_instance_ptr();
         let invalid_name = [0xff_u8, 0x00];
 
@@ -705,6 +708,9 @@ mod tests {
     /// fully close — the test passes here because IDs are never reused.
     #[test]
     fn use_after_destroy_returns_clean_error_not_uaf() {
+        let _guard = crate::service_singleton::test::LAST_ERROR_TEST_MUTEX
+            .lock()
+            .unwrap();
         let instance_ptr = new_mock_instance_ptr();
         // Round-trip through destroy first.
         unsafe { vm_exec_instance_destroy(instance_ptr) };
@@ -740,6 +746,9 @@ mod tests {
 
     #[test]
     fn vm_exec_instance_has_imported_function_rejects_invalid_utf8() {
+        let _guard = crate::service_singleton::test::LAST_ERROR_TEST_MUTEX
+            .lock()
+            .unwrap();
         let instance_ptr = new_mock_instance_ptr();
         let invalid_name = [0xff_u8, 0x00];
 

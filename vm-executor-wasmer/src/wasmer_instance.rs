@@ -1,3 +1,7 @@
+use crate::cache_envelope::{
+    compilation_options_fingerprint, decode_cache_artifact,
+    encode_cache_artifact_with_options_fingerprint,
+};
 use crate::executor_interface::{
     BreakpointValueLegacy, CompilationOptionsLegacy, ExecutorError, InstanceLegacy, MemLength,
     MemPtr, OpcodeCost, ServiceError, VMHooksEarlyExit, VMHooksLegacy,
@@ -26,6 +30,7 @@ const MEMORY_RANGE_OUT_OF_BOUNDS: &str = "memory range out of bounds";
 pub struct WasmerInstance {
     pub(crate) wasmer_instance: wasmer::Instance,
     memory_name: String,
+    compilation_options_fingerprint: u64,
     early_exit_cell: RefCell<Option<VMHooksEarlyExit>>,
 }
 
@@ -72,6 +77,7 @@ impl WasmerInstance {
         Ok(WasmerInstance {
             wasmer_instance,
             memory_name,
+            compilation_options_fingerprint: compilation_options_fingerprint(compilation_options),
             early_exit_cell: RefCell::new(None),
         })
     }
@@ -92,9 +98,10 @@ impl WasmerInstance {
         let store = Store::new(&Universal::new(compiler).engine());
 
         trace!("Deserializing module ...");
+        let artifact_bytes = decode_cache_artifact(cache_bytes, compilation_options)?.to_vec();
         let module;
         unsafe {
-            module = Module::deserialize(&store, cache_bytes)?;
+            module = Module::deserialize(&store, &artifact_bytes)?;
         };
 
         // Create an empty import object.
@@ -121,6 +128,7 @@ impl WasmerInstance {
         Ok(WasmerInstance {
             wasmer_instance,
             memory_name,
+            compilation_options_fingerprint: compilation_options_fingerprint(compilation_options),
             early_exit_cell: RefCell::new(None),
         })
     }
@@ -401,7 +409,10 @@ impl InstanceLegacy for WasmerInstance {
     fn cache(&self) -> Result<Vec<u8>, String> {
         let module = self.wasmer_instance.module();
         match module.serialize() {
-            Ok(bytes) => Ok(bytes),
+            Ok(bytes) => Ok(encode_cache_artifact_with_options_fingerprint(
+                &bytes,
+                self.compilation_options_fingerprint,
+            )),
             Err(err) => Err(err.to_string()),
         }
     }
